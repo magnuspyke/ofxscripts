@@ -1,0 +1,13 @@
+#template for custom srub routine
+#rename to scrub_yourModuleName.py
+
+from control2 import *
+from scrubber import scrubPrint
+import re
+
+def scrub(ofx, siteURL='', accType=''):
+    #do what you want
+    scrubPrint '...blah blah blah...'
+    
+    #must return ofx
+    return ofx

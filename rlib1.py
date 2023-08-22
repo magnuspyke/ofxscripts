@@ -17,15 +17,69 @@
 # 20Feb2021*rlc
 #   - minor edits while implementing recent updates, including Requests rather than httplib
 #   - removed OfxDate() and added dateTimeStr()
+# 19Jun2023*rlc
+#   - add logging
 
 import os, glob, site_cfg, time, uuid, re, random
-import sys, pyDes, md5, pickle, locale, urllib2
+import md5, urllib2
+import logging, logging.handlers
+import sys, pyDes, pickle
 from datetime import datetime
-from Cookie import SimpleCookie
 from control2 import *
 
 if Debug:
     import traceback
+
+#logging handlers <begin> ------
+
+class logMultiLineFormatter(logging.Formatter):
+    #indent multi-line text for logger
+    def format(self, record):
+        msg = record.getMessage()
+        if msg.count("\n") > 1:
+            indented_msg = ''.join('\t\t' + line for line in msg.split("\n"))
+            record.msg = '\n' + indented_msg
+        return logging.Formatter.format(self, record)
+    
+def create_logger(name, filename):
+
+    # Create a logger
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)
+
+    # Create a log file handler with size limit (size defined in control2.py)
+    file_handler = logging.handlers.RotatingFileHandler(filename, maxBytes=logFileLimit * 1024**2, backupCount=0)
+    file_handler.setLevel(logging.DEBUG)
+
+    # Create a stream handler for the screen
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(logging.INFO)
+
+    # formatters for log messages.
+    file_formatter = logMultiLineFormatter('%(asctime)s - %(levelname)s - %(message)s')
+    screen_formatter = logging.Formatter('%(message)s')
+
+    # Add the formatter to the handlers
+    file_handler.setFormatter(file_formatter)
+    stream_handler.setFormatter(screen_formatter)
+
+    # Add the handlers to the logger
+    logger.addHandler(stream_handler)
+    if logFileEnable: logger.addHandler(file_handler)
+
+    #warn if sensitive info is in the log file, which may happen during debug
+    try:
+        with open(filename) as f:
+            log=f.read()
+        if '<USERID>' in log or '<USERPASS>' in log:
+            logger.warn('**Sensitive user/account info found in %s' % filename)
+    except:
+        raise
+    
+    return logger
+
+#logging handlers <end> ------
+
 
 def clientUID(url, username, delKey=False):
     #get clientUID for urlHost+username.  if not exists, create
@@ -42,14 +96,14 @@ def clientUID(url, username, delKey=False):
     urlHost, urlSelector = urllib2.splithost(path)
     key = md5.md5(urlHost+username).digest()
 
-    if glob.glob(dfile) <> []:
+    if glob.glob(dfile) != []:
         #lookup
         f = open(dfile,'rb')
         dTable = pickle.load(f) 
         uuid = dTable.get(key, None)
         f.close()
         
-    if uuid==None or (delKey and uuid<>None):
+    if uuid==None or (delKey and uuid!=None):
         f = open(dfile,'wb')
         if delKey:
             #remove existing key
@@ -78,7 +132,7 @@ def get_int(prompt):
                 a=int(istr)
                 done = True
             except:
-                print 'Please enter a valid integer'
+                print('Please enter a valid integer')
     return a
 
 def FieldVal(dic, fieldname):
@@ -92,13 +146,13 @@ def FieldVal(dic, fieldname):
 
 def decrypt_pw(pwkey):
     #validate password if pwkey isn't null
-    if pwkey <> '':
+    if pwkey != '':
         #file encrypted... need password
         pw = pyDes.getDESpw()   #ask for password
         k = pyDes.des(pw)       #create encryption object using key
         pws = k.decrypt(pwkey,' ')  #decrypt
-        if pws <> pw:               #comp to saved password
-            print 'Invalid password.  Exiting.'
+        if pws != pw:               #comp to saved password
+            print('Invalid password.  Exiting.')
             sys.exit()
         else:
             #decrypt the encrypted fields
@@ -129,7 +183,7 @@ def get_cfg():
     c_AcctArray = []        #AcctArray = [['SiteName', 'Account#', 'AcctType', 'UserName', 'PassWord'], ...]
     c_pwkey=''              #default = no encryption
     c_getquotes = False     #default = no quotes
-    if glob.glob(cfgFile) <> []:
+    if glob.glob(cfgFile) != []:
         cfg = open(cfgFile,'rb')
         try:
             c_pwkey = pickle.load(cfg)            #encrypted pw key
@@ -145,7 +199,7 @@ def QuoteHTMwriter(qList):
     # Supports Yahoo! finance links
     # See quotes.py for qList structure
     global userdat
-    
+    log = logging.getLogger('root')
     userdat = site_cfg.site_cfg()
     
     # CREATE FILE
@@ -153,7 +207,7 @@ def QuoteHTMwriter(qList):
     fullpath = '"' + os.path.realpath(filename) + '"'   #encapsulate spaces
     
     f = open(filename,"w")
-    print "Writing", filename
+    log.info('Writing %s' % filename)
     
     # Write HEADER
     _QHTMheader(f)
@@ -264,7 +318,7 @@ def _QHTMrow(f, quote, shade):
     lspace = '&nbsp;' * (10-len(quote.date)) #leave space for double-digit month
     
     row = td1 + quote.source + '</td>' + \
-          td1 + '<a href=' + quote.quoteURL +'>'+quote.symbol+'</a></td>' + \
+          td1 + '<a href="' + quote.quoteURL +'" target="_blank">'+quote.symbol+'</a></td>' + \
           td1L+ quote.name+'</td>' + \
           td1R+ quote.price + '</td>' + \
           td1 + lspace + quote.date + tspace + quote.time +'</td>' + \
@@ -312,7 +366,7 @@ NEWFILEUID:NONE
 def OfxField(tag,value, ofxver='102'):
     field = ''
     #skip empty values
-    if tag <> '' and value <> '':
+    if tag != '' and value != '':
         field = '<'+tag+'>'+value
         #terminate as xml if ofx 2.x
         if ofxver[0]=='2': field = field + '</'+tag+'>'
@@ -351,6 +405,10 @@ def validOFX(content):
     elif content.find('ACCESSDENIED') > 0:
         msg = 'Access denied'
     
+    if content.find('<INVPOS>') > -1 and content.find('<SECLIST>') < 0:
+        #An investment statement must contain a <SECLIST> section when a <INVPOSLIST> section exists
+        msg = "OFX statement contains <INVPOS> record but missing required <SECLIST> section"
+
     return msg
     
 def int2(str):
@@ -445,5 +503,5 @@ def combineOfx(ofxList):
     f=open(cfile,'w')
     f.write(combOfx)
     f.close()
-    print "Combined OFX created: " + cfile
+    print('Combined OFX created: %s"' % cfile)
     return cfile

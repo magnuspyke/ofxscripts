@@ -10,7 +10,7 @@
 # For more information, see
 #    http://thefinancebuff.com/2009/09/security-quote-script-for-microsoft-money.html
 
-# Revisions (pocketsense)
+# History
 # -----------------------------------------------------
 # 04-Mar-2010*rlc 
 #   - Initial changes/edits for incorporation w/ the "pocketsense" pkg (formatting, method of call, etc.)
@@ -75,12 +75,14 @@
 #   -Use longName when available for Yahoo quotes.  Mutual fund *family* name is sometimes given as shortName (see vhcox as example)
 # 20Feb2021*rlc
 #   -Minor edits while implementing Requests pkg
+# 25May2023*rlc
+#   -Update to use Yahoo v10 service and cleanup json parse to remove csv-oriented format
 
-import os, sys, time, urllib2, socket, shlex, re, csv, uuid, json
+import os, requests, re, json, pickle
 import site_cfg
 from control2 import *
 from rlib1 import *
-from datetime import datetime
+from datetime import datetime, timedelta
 
 join = str.join
 
@@ -99,11 +101,11 @@ class Security:
         # TickerSym = symbol to grab from Yahoo
         # m         = multiplier for quote
         # s         = symbol to pass to Money
+
         self.ticker = item['ticker']
         self.multiplier = item['m']
         self.symbol = item['s']
         self.status = True
-        socket.setdefaulttimeout(10)    #default socket timeout for server read, secs
         
     def _removeIllegalChars(self, inputString):
         pattern = re.compile("[^a-zA-Z0-9 ,.-]+")
@@ -112,182 +114,63 @@ class Security:
     def getQuote(self):
         
         #Yahoo! Finance:  
-        #    name (n), lastprice (l1), date (d1), time(t1), previous close (p), %change (p2)
+        #parse data packet from standard htm page
         
-        if Debug: print "Getting quote for:", self.ticker
+        log.info('Getting quote for: %s' % self.ticker)
         
         self.status=False
         self.source='Y'
         #note: each try for a quote sets self.status=true if successful
         if eYahoo:
-            csvtxt = self.getYahooQuote()
-            quote = self.csvparse(csvtxt)
+            self.getYahooQuote()
             if self.status: self.source='Y'
                         
-        if not self.status and eGoogle:
-            # try screen scrape
-            csvtxt = self.getGoogleQuote()
-            quote = self.csvparse(csvtxt)
-            if self.status: self.source='G'
-            
         if not self.status:
-            print "** ", self.ticker, ': invalid quote response. Skipping...'
+            log.info('** %s: invalid quote response. Skipping.' % self.ticker)
             self.name = '*InvalidSymbol*'
         else:
-            #show/save what we got   rlc*2010
-            # example: "Amazon.com, Inc.",78.46,"9/3/2009","4:00pm", 80.00, "-1.96%"
-            # Security names may have embedded commas, so use CSV utility to parse (rlc*2010)
-
-            if Debug: print "Quote result string:", csvtxt
-
-            self.name    = quote[0]
-            self.price   = quote[1]
-            self.date    = quote[2]
-            self.time    = quote[3]
-            self.pclose  = quote[4]
-            self.pchange = quote[5]
-            
-            #clean things up, format datetime str, and apply multiplier
-            # if security name is null, replace name with symbol
-            if self.name.strip()=='': self.name = self.ticker
-            self.price = str(float2(self.price)*self.multiplier)  #adjust price by multiplier
-            self.date = self.date.lstrip('0 ')
-            self.datetime  = datetime.strptime(self.date + " " + self.time, "%m/%d/%Y %H:%M%p")
-            self.quoteTime = self.datetime.strftime("%Y%m%d%H%M%S") + '[' + YahooTimeZone + ']'
-            if '?' not in self.pclose and 'N/A' not in self.pclose:
-                #adjust last close price by multiplier
-                self.pclose = str(float2(self.pclose)*self.multiplier)    #previous close
-
+            #show what we got
             name = self.ticker
-            if self.symbol <> self.ticker:
-                name = self.ticker + '(' + self.symbol + ')'
-            print self.source+':' , name, self.price, self.date, self.time, self.pchange
+            log.info('%s: %s %s %s %s' % (self.ticker, self.price, self.date, self.time, self.pchange))
 
                 
-    def csvparse(self, csvtxt):
-        quote=[]
-        self.status=True
-        csvlst = [csvtxt]      # csv.reader reads lists the same as files
-        reader = csv.reader(csvlst)
-        for row in reader:     # we only have one row... so read it into a quote list
-            quote = row        # quote[]= [name, price, quoteTime, pclose, pchange], all as strings
-       
-        if len(quote) < 6:
-            self.status=False
-        elif quote[1] == '0.00' or quote[2] == 'N/A':
-            self.status=False
-
-        return quote
-
     def getYahooQuote(self):
         #read Yahoo json data api, and return csv
-        
-        url = YahooURL + "?symbols=%s" % self.ticker
+        #returns: quote= [name, price, quoteTime, pclose, pchange], all as strings
+
+        jsonURL = (YahooURL+'&crumb={crumb}').format(ticker=self.ticker, crumb=yahooCrumb)
+        self.quoteURL = 'https://finance.yahoo.com/quote/{ticker}'.format(ticker=self.ticker)  #link to pretty view
+        if Debug: log.debug('Reading ' + jsonURL)
         csvtxt=""
         self.status=True
-        
+
         try:
-            ht=urllib2.urlopen(url).read()
-            self.quoteURL = 'https://finance.yahoo.com/quote/%s' % self.ticker  #html link
+            response=yahooSession.get(jsonURL)
+
         except:
-            if Debug: print "** Error reading " + url + "\n"
+            if Debug: log.debug('** Error reading %s' % self.quoteURL)
             self.status = False
         
         if self.status:
             try:
-                j  = json.loads(ht)                     #parse json to dict
-                jd = j['quoteResponse']['result'][0]    #inside response pkg 
-                
-                #use longName if available, otherwise use shortName field
-                try:
-                    name  = jd['longName']
-                except:
-                    name  = jd['shortName']
-                price     = jd['regularMarketPrice']
-                mtime     = jd['regularMarketTime']
-                lastPrice = jd['regularMarketPreviousClose']
-                changePer = jd['regularMarketChangePercent']
-                
-                qtime    = time.localtime(mtime)
-                qdateS   = time.strftime("%m/%d/%Y", qtime)
-                qtimeS   = time.strftime("%I:%M%p", qtime)
-                changeS = '{0:.2}%'.format(changePer)
-
-                name = '"' + self._removeIllegalChars(name) + '"'   #cleanup foreign chars and quote
-                csvtxt = ','.join([name, str(price), qdateS, qtimeS, str(lastPrice), changeS])
-
-                if Debug: print "Yahoo csvtxt=",csvtxt
+                ht = response.text.encode('ascii', 'ignore')
+                pdata = json.loads(ht)
+                quote = pdata['quoteSummary']['result'][0]['price']
+                self.name = quote['shortName'] or quote['longName'] or ''
+                self.name = self._removeIllegalChars(self.name)
+                if self.name.strip()=='': self.name = quote['symbol']
+                self.price = '%.2f' % (quote['regularMarketPrice']['raw'] * self.multiplier)
+                self.pchange = quote['regularMarketChangePercent']['fmt']
+                self.datetime= datetime.fromtimestamp(quote['regularMarketTime'])
+                self.date=self.datetime.strftime("%m/%d/%Y")
+                self.time=self.datetime.strftime("%H:%M:%S")
+                self.quoteTime = self.datetime.strftime("%Y%m%d%H%M%S") + '[' + YahooTimeZone + ']'
+                self.pclose= '%.2f' % (quote['regularMarketPreviousClose']['raw'] * self.multiplier)
 
             except:
                 #not formatted as expected?
-                if Debug: print "An error occured by parsing the Yahoo Finance reponse for: ", self.ticker
+                if Debug: log.debug('An error occured when parsing the Yahoo Finance response for %s' % self.ticker)
                 self.status=False
-
-        return csvtxt
-
-    def getGoogleQuote(self):
-        #New screen scrape function: 19-Jan-2014*rlc
-        #  This function creates a csvtxt string with the same format as the Yahoo csv interface
-        #  Example return: "Amazon.com, Inc.","78.46","9/3/2009","4:00pm", 80.00, "-1.96%"
-        #  Gets data from Google Finance
-        
-        self.status = True  # fresh start
-        csvtxt = ""
-        if Debug: print "Trying Google Finance for: ", self.ticker
-
-        #Example url:  https://www.google.com/finance?q=msft
-        url = GoogleURL + "?q=" + self.ticker
-        try:
-            ht=urllib2.urlopen(url).read()
-            self.quoteURL = url
-        
-        except:
-            print "** error reading " + url + "\n"
-            self.status = False
-        
-        ticker = self.ticker.replace("^","\^")  #use literal regex character
-        if self.status:
-            try:
-                #Name
-                t1 = '(<meta itemprop="name".*?content=")(.*?)(")'
-                p = re.compile(t1, re.IGNORECASE | re.DOTALL)
-                rslt = p.findall(ht)
-                name= rslt[0][1]
-            
-                #price
-                t1 = '(<meta itemprop="price".*?content=")(.*?)(")'
-                p = re.compile(t1, re.IGNORECASE | re.DOTALL)
-                rslt = p.findall(ht)
-                price= rslt[0][1]
-
-                #Price change%
-                t1 = '(<meta itemprop="priceChangePercent".*?content=")(.*?)(")'
-                p = re.compile(t1, re.IGNORECASE | re.DOTALL)
-                rslt = p.findall(ht)
-                pchange= rslt[0][1] + '%'
-                
-                #Google date/time format= "yyyy-mm-ddThh:mm:ssZ"
-                #               Example = "2014-01-10T21:30:00Z"
-                
-                t1 = '(<meta itemprop="quoteTime".*?content=")(.*?)(")'
-                p = re.compile(t1, re.IGNORECASE | re.DOTALL | re.MULTILINE)
-                rslt = p.findall(ht)
-                date1= rslt[0][1]
-                
-                qdate = datetime.strptime(date1, "%Y-%m-%dT%H:%M:%SZ")
-                date2 = qdate.strftime("%m/%d/%Y").lstrip('0 ')  #mm/dd/yyyy, but no leading zero or spaces
-
-                
-                #name may contain commas and illegal chars, so clenaup & enclose in quotes
-                name = '"' + self._removeIllegalChars(name) + '"'
-                #price may contain commas, but we don't want them
-                price = ''.join([c for c in price if c in '1234567890.'])
-                csvtxt = ','.join([name, price, date2, '04:00PM', '?', pchange])
-                if Debug: print "Google csvtxt=",csvtxt
-            except:
-                self.status=False
-                if Debug: print "An error occured by parsing the Google Finance reponse for: ", self.ticker
-        return csvtxt
         
 class OfxWriter:
     """
@@ -445,39 +328,103 @@ class OfxWriter:
         f.write(self.getOfxMsg())
         f.close()
 
+def getYahooSession():
+    #create requests session for yahoo finance
+    #gets session cookie/crumb and reuses until it expires
+    #deleting cookie file will force a refresh
+
+    cookieFile='cookies.dat'
+    yCookies, cookie, crumb=None, None, None
+
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.2; Win64; x64)'}
+    if glob.glob(cookieFile):
+        #read cookie info
+        try:
+            with open(cookieFile, 'rb') as f:
+                data=pickle.load(f)
+                yahooFin = data['yahooFinance']
+                cookie = yahooFin['cookie']
+                crumb  = yahooFin['crumb']
+                expires = datetime.fromtimestamp(cookie.expires)
+                if datetime.now() > (expires - timedelta(days=1)): 
+                    cookie=None
+        except Exception as e:
+            log.debug('Error loading %s' % cookieFile)
+
+    if not cookie:  
+        #cookie not found or expiring soon.  refresh
+        log.info('Fetching new Yahoo Finance cookie')
+        response = requests.get("https://fc.yahoo.com", headers=headers, allow_redirects=True)
+        if not response.cookies:
+            log.error("Failed to obtain Yahoo auth cookie")
+        else:
+            yCookies=response.cookies   #requests cookiejar
+
+        cookie = list(yCookies)[0]      #first cookie in cookiejar.  namespace type with all fields (i.e., cookie.name, cookie.value, etc.)
+        expires = datetime.fromtimestamp(cookie.expires)
+
+        crumb = None
+        crumb_response = requests.get("https://query2.finance.yahoo.com/v1/test/getcrumb",
+                headers=headers,
+                cookies=yCookies,
+                allow_redirects=True,
+            )
+        crumb = crumb_response.text
+        if crumb is None:
+            log.error("Failed to retrieve Yahoo crumb")
+
+        #save cookie info
+        cookieData = {'yahooFinance': {'cookie': cookie, 'crumb': crumb}}
+        with open(cookieFile,'wb') as f:
+            pickle.dump(cookieData, f)
+
+    if Debug:
+        log.debug('YahooFinance: cookie={cookie}, expires={expires}, crumb={crumb}'.format(
+                    cookie=cookie, expires=expires.strftime('%m/%d/%Y'), crumb=crumb)
+                 )
+    session = requests.session()
+    session.headers.update(headers)
+    session.cookies.update({cookie.name: cookie.value})        
+    return session, crumb
+
 #----------------------------------------------------------------------------
 def getQuotes():
 
-    global YahooURL, eYahoo, GoogleURL, eGoogle, YahooTimeZone
+    global YahooURL, eYahoo, GoogleURL, YahooTimeZone
     status = True    #overall status flag across all operations (true == no errors getting data)
     
+    global log
+    log = logging.getLogger('root')
+
     #get site and other user-defined data
     userdat = site_cfg.site_cfg()
     stocks = userdat.stocks
     funds = userdat.funds
     eYahoo = userdat.enableYahooFinance
     YahooURL = userdat.YahooURL
-    GoogleURL = userdat.GoogleURL
-    eGoogle = userdat.enableGoogleFinance
     YahooTimeZone = userdat.YahooTimeZone
     currency = userdat.quotecurrency
     account = userdat.quoteAccount
     ofxFile1, ofxFile2, htmFileName = '','',''
-    
-    stockList = []
-    print "Getting security and fund quotes..."
-    for item in stocks:
-        sec = Security(item)
-        sec.getQuote()
-        status = status and sec.status
-        if sec.status: stockList.append(sec)
-        
-    mfList = []
-    for item in funds:
-        sec = Security(item)
-        sec.getQuote()
-        status = status and sec.status
-        if sec.status: mfList.append(sec)
+
+    #use single requests session for all
+    global yahooSession, yahooCrumb
+    yahooSession, yahooCrumb = getYahooSession()
+
+    log.info('Getting security and fund quotes')
+    stockList, mfList = [], []
+    with yahooSession:
+        for item in stocks:
+            sec = Security(item)
+            sec.getQuote()
+            status = status and sec.status
+            if sec.status: stockList.append(sec)
+            
+        for item in funds:
+            sec = Security(item)
+            sec.getQuote()
+            status = status and sec.status
+            if sec.status: mfList.append(sec)
         
     qList = stockList + mfList
     
@@ -493,7 +440,7 @@ def getQuotes():
         if userdat.forceQuotes:
            #generate a second file with non-zero shares.  Getdata and Setup use this file
            #to force quote reconciliation in Money, by sending ofxFile2, and then ofxFile1
-           ofxFile2 = xfrdir + "quotes" + dateTimeStr + str(random.randrange(1e5,1e6)) + ".ofx"
+           ofxFile2 = xfrdir + "quotes" + dateTimeStr() + str(random.randrange(1e5,1e6)) + ".ofx"
            writer = OfxWriter(currency, account, 0.001, stockList, mfList)
            writer.writeFile(ofxFile2)
         
@@ -506,7 +453,7 @@ def getQuotes():
         #append results to QuoteHistory.csv if enabled
         if status and userdat.savequotehistory:
             csvFile = xfrdir+"QuoteHistory.csv"
-            print "Appending quote results to {0}...".format(csvFile)
+            log.info('Appending quote results to {0}'.format(csvFile))
             newfile = (glob.glob(csvFile) == [])
             f = open(csvFile,"a")
             if newfile:

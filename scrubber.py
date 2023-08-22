@@ -6,78 +6,65 @@
 # 05-Aug-2010*rlc
 # - Added _scrubTime() function to fix NULL time stamps so that transactions record on the correct date
 #   regardless of time zone.
-
 # 28-Jan-2011*rlc
 #   - Added _scrubDTSTART() to fix missing <DTEND> fields when a <DTSTART> exists.
 #   - Recoded scrub routines to use regex substitutions
-
 # 28-Aug-2012*rlc
 #   - Added quietScrub option to sites.dat (suppresses scrub messages)
-
 # 02-Feb-2013*rlc
 #   - Bug fix in _scrubDTSTART
 #   - Added scrub routine to verify Investment buy and sell transactions
-
 # 17-Feb-2013*rlc
 #   - Added scrub routine for CORRECTACTION and CORRECTFITID tags (not supported by Money)
-
 # 06-Jul-2013*rlc
 #   - Bug fix in _scrubDTSTART()
-
 # 20-Feb-2014*rlc
 #   - Bug fix in _scrubINVsign() for SELL transactions
-
 #14-Aug-2016*rlc
 #   - Update to handle new Discover Bank FITID format.
-
 #11-Mar-2017*rlc
 #   - Added REINVEST transactions to _scrubINVsign()
 #   - Added _scrubRemoveZeroTrans().  Removes $0.00 transactions when enabled in sites.dat
-
 #08-Apr-2017*cgn / rlc
 #   - Revert _scrubINVsign() to previous version
 #   - Add _scrubREINVESTsign() to handle REINVEST transactions separately 
 #     Note the differnt field order vs what's used for BUY/SELL transactions in _scrubINVsign()
-
 #27-Aug-2017*rlc
 #   - Bug patch to fix timedelta call
-
 #24-Oct-2017*ad / rlc
 #   - Update to address recent change by Discover Bank re transaction ids
 #   - Insert check# field for discover bank transactions such that Money recognizes it
-
 #01-Jan-2018*rlc
 #   - Revert Discover Bank fitid substitution to the same as it was before the 24-Oct update
-
 #14-Apr-2018*rlc
 #   - Replace ampsersand "&" symbol w/ &amp; code when not part of valid escape code. see _scrubGeneral()
-
 #27-Jul-2018*dbc
 #   - Add TRowePrice scrub function to fix paid-out dividends/cap gains that are marked as reinvested
-
 #14-Feb-2021*cgn
 #   - add REFNUM and SIC fields to general scrub routine
 #   - add _scrubHeader() to remove spaces after colon if present
-
 #14-Feb-2021*rlc
 #   - add support for site-specific skipZeroTrans option.
 #   - add "replace null or missing <TRNTYPE> with 'OTHER'" to _scrubGenera()
-
 #27-Mar-2021*cgn
 #  - open ofx file w/ 'U' qualifier.  Forces newlines to match Windows convention (e.g., \n = <CR><LF>)
+#19Jun2023*rlc
+#   - add logging
 
-import os, sys, re, glob
+import os, sys, re, glob, logging
 import site_cfg
 from datetime import datetime, timedelta
 from control2 import *
 from rlib1 import *
+
+log = logging.getLogger('root')
 
 userdat = site_cfg.site_cfg()
 stat = False    #global used between re lambda subs to track status
 
 def scrubPrint(line):
     if not userdat.quietScrub:
-        print "  +" + line
+        log.info("+ %s" % line)
     
 def scrub(filename, site):
     #filename = string
@@ -89,7 +76,6 @@ def scrub(filename, site):
     site_skip_zt = FieldVal(site, 'skipzerotrans')
     with open(filename,'rU') as f:
         ofx = f.read()  #as-found ofx message
-        #print ofx
        
     ofx = _scrubHeader(ofx) #Remove illegal spaces in OFX header lines
     
@@ -123,8 +109,7 @@ def scrub(filename, site):
             else: 
                 scrubPrint(scrubFile + ' ERROR: Custom scrub_*.py files must return a valid OFX message.')
         except Exception as e:
-            scrubPrint('An error occurred when processing scrub module: ' + scrublet)
-            print e
+            log.exception('An error occurred when processing scrub module: %s' % scrublet)
             
     #write the new version to the same file
     with open(filename, 'w') as f:
@@ -178,7 +163,7 @@ def _scrubDTSTART(ofx):
         
         #regex p captures everything from <DTSTART> up to the next <tag> or white space into group(1)
         p = re.compile(r'(<DTSTART>[^<\s]+)', re.IGNORECASE)
-        if Debug: print "DTSTART: findall()=", p.findall(ofx_final)
+        if Debug: log.debug('DTSTART: findall()=%s' % p.findall(ofx_final))
         #replace group1 with (group1 + <DTEND> + datetime)
         ofx_final = p.sub(r'\1<DTEND>'+nowstr, ofx_final)
     
@@ -206,7 +191,7 @@ def _scrubShiftTime_r1(r,h):
     fieldtag = r.group(1)       #date field tag (e.g., <DTASOF>)
     DT = r.group(2).strip(' ')  #date+time
 
-    if Debug: print "fieldtag=", fieldtag, "| DT=" + DT
+    if Debug: log.debug('fieldtag=%s | DT=%s' % (fieldtag, DT))
     
     # Full date/time format example:  20100730120000.000[-4:EDT]
     #separate into date/time + timezone
@@ -221,7 +206,7 @@ def _scrubShiftTime_r1(r,h):
         d  = DT.index('.')
         DT = DT[:d]
         
-    if Debug: scrubPrint("New DT=" + DT + "| tz=" + tz)
+    if Debug: log.debug('New DT=%s | tz=%s' % (DT, tz))
     
     #shift the time
     tval = datetime.strptime(DT,"%Y%m%d%H%M%S")  #convert str to datetime
@@ -390,40 +375,3 @@ def _scrubHeader(ofx):
         ofx = result[0]
         scrubPrint("Scrubber: Removed spaces in " + str(result[1]) + " header lines.")
     return ofx
-    
-#-----------------------------------------------------------------------------
-# OFX fiorg T. Rowe Price
-#   1.  T. Rowe Price OFX reports paid-out (non-reinvested) dividends and capital gains incorrectly
-#           in such a way that MS Money ignores the transaction.
-#       These transactions can be identified as reinvestments having 0.0 shares.
-#       The transaction will be bounded by <REINVEST> and </REINVEST> and contain <UNITS>0.0.
-#       Furthermore, the payment is incorrectly shown as a negative value, the memo field is misleading, and
-#           a required field (<SUBACCTFUND>) is missing.
-#
-#       For dividends (<INCOMETYPE>DIV) make these changes to the transaction:
-#           Change <REINVEST> to <INCOME>
-#           Change <MEMO>DIVIDEND (REINVEST) to <MEMO>DIVIDEND PAID
-#           Change <TOTAL>-#.## to <TOTAL>#.##
-#           Following <SUBACCTSEC>CASH add <SUBACCTFUND>CASH
-#           Delete <UNITS>0.0
-#           Delete <UNITPRICE>#.##
-#           Change </REINVEST> to </INCOME>
-
-#       For short term capital gains (<INCOMETYPE>CGSHORT) make these changes to the transaction:
-#           Change <REINVEST> to <INCOME>
-#           Change <MEMO>SHORT TERM CAP GAIN REIN to <MEMO>SHORT TERM CAP GAIN PAID
-#           Change <TOTAL>-#.## to <TOTAL>#.##
-#           Following <SUBACCTSEC>CASH add <SUBACCTFUND>CASH
-#           Delete <UNITS>0.0
-#           Delete <UNITPRICE>#.##
-#           Change </REINVEST> to </INCOME>
-
-#       For long term capital gains (<INCOMETYPE>CGLONG) make these changes to the transaction:
-#           Change <REINVEST> to <INCOME>
-#           Change <MEMO>LONG TERM CAPITAL GAI to <MEMO>LONG TERM CAPITAL GAIN PAID
-#           Change <TOTAL>-#.## to <TOTAL>#.##
-#           Following <SUBACCTSEC>CASH add <SUBACCTFUND>CASH
-#           Delete <UNITS>0.0
-#           Delete <UNITPRICE>#.##
-#           Change </REINVEST> to </INCOME>
-
