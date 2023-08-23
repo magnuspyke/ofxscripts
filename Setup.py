@@ -29,7 +29,7 @@
 #19Jun2023*rlc
 #   - add logging
 
-import os, sys, glob, re, pickle, shutil, time, urllib2
+import os, glob, re, pickle, shutil, time
 import pyDes, ofx, quotes, site_cfg, filecmp
 import rlib1
 from control2 import *  #global settings
@@ -99,8 +99,8 @@ def config_account():
         sitenum = sitenum - 1   #index into array
         sitename = Sitenames[sitenum]
         log.info('Configuring account for %s' % sitename)
-        username = raw_input('User name       : ')
-        password = raw_input('Account password: ')
+        username = input('User name       : ')
+        password = input('Account password: ')
         
         #query server for available (valid) accounts for user
         stat=True
@@ -123,7 +123,7 @@ def config_account():
        
         if not stat or not '<ACCTID>' in response:
             log.warn('An error occurred requesting accounts from the site.  Please check username and password.')
-            ans = raw_input('Continue configuring account (Yes/No): [N] ') or 'N'
+            ans = input('Continue configuring account (Yes/No): [N] ') or 'N'
             stat = True if ans[0].upper() == 'Y' else False
 
         if stat:
@@ -147,9 +147,9 @@ def config_account():
                 print('%i. %s' % (i, a))
                 i+=1
             
-            account  = raw_input('\nAccount #       : ') or 0
+            account  = input('\nAccount #       : ') or 0
             if account==0: 
-                raw_input("No account selected.  Press <Enter> to return to the main menu")
+                input("No account selected.  Press <Enter> to return to the main menu")
                 return
                 
             if len(account) < 3: account = alist[int(account)-1]
@@ -190,7 +190,7 @@ def config_account():
             AcctArray.append(acct)
             
             #test the new account?
-            test = raw_input('Do you want to test transaction downloads for the new account now (y/n)? ').upper()
+            test = input('Do you want to test transaction downloads for the new account now (y/n)? ').upper()
             if test=='Y':
                 log.info('Testing account %s:%s' % (sitename, account))
                 test_acct(acct)
@@ -200,10 +200,10 @@ def test_acct(acct):
     if status:
         if ofxfile !='':
             log.info('Download completed successfully')
-            test = raw_input('Send the results to Money (y/n)? ').upper()
+            test = input('Send the results to Money (y/n)? ').upper()
             if test=='Y':
                 rlib1.runFile(ofxfile)
-                raw_input('Press Enter to continue...')
+                input('Press Enter to continue...')
             else:
                 log.info('Results not sent to Money.  Cancelled by user.')
     else:
@@ -214,18 +214,18 @@ def test_quotes():
         status, ofxFile1, ofxFile2, htmFile = quotes.getQuotes()
         if status:
             log.info('Download completed successfully')
-            ask = raw_input('Open <Quotes.htm> in the default browser (y/n)?').upper()
+            ask = input('Open <Quotes.htm> in the default browser (y/n)?').upper()
             if ask=='Y':
                 os.startfile(htmFile)   #don't wait for browser close
 
-            ask = raw_input('Send the results to Money (y/n)? ').upper()
+            ask = input('Send the results to Money (y/n)? ').upper()
             if ask=='Y':
                 if ofxFile2 != '': 
                     rlib1.runFile(ofxFile2)
-                    if Debug: raw_input('\nPress <Enter> to send ForceQuotes statement.')
+                    if Debug: input('\nPress <Enter> to send ForceQuotes statement.')
                     time.sleep(0.5)      #slight delay, to force load order in Money
                 rlib1.runFile(ofxFile1)
-                raw_input('Press Enter to continue...')
+                input('Press Enter to continue...')
         else:
             log.warning('An error occurred while testing Stock/Fund quotes.')
 
@@ -269,13 +269,13 @@ if __name__=="__main__":
             os.mkdir(xfrdir)
         except:
             log.exception('**Could not create %s' % xfrdir)
-            system.exit()
+            exit()
     if not os.path.exists(importdir):
         try:
             os.mkdir(importdir)
         except:
             log.exception('**Could not create %s' % importdir)
-            system.exit()
+            exit()
 
     #**********main menu***********
     menu_option = 1
@@ -315,7 +315,7 @@ if __name__=="__main__":
             
         elif menu_option == 2:
             #list existing accounts
-            action = raw_input('Show account connection keys? Y/N [N]: ').upper()
+            action = input('Show account connection keys? Y/N [N]: ').upper()
             if action=='': action='N'
             list_accounts(action[0]=='Y')
             
@@ -324,7 +324,7 @@ if __name__=="__main__":
             list_accounts()
             print("0.  None")
             separator_line()
-            action = raw_input('(D)elete account, (R)eset connection, or (C)ancel? [C]: ').upper()
+            action = input('(D)elete account, (R)eset connection, or (C)ancel? [C]: ').upper()
             if action in ['D','R']:
                 actIndex = rlib1.get_int('Account #: [0] ') - 1
                 sitename = AcctArray[actIndex][0]
@@ -336,7 +336,7 @@ if __name__=="__main__":
                 if actIndex <= len(AcctArray) and actIndex >= 0 and action=='D':
                     #delete the account
                     log.info('Deleting account %s:%s:%s' % (user, sitename, acctnum))
-                    doit = raw_input('Confirm delete (Y/N) ').upper()
+                    doit = input('Confirm delete (Y/N) ').upper()
                     if doit == 'Y':
                         AcctArray.pop(actIndex)
                         log.info('Account %s:%s:%s deleted.' % (user, sitename, acctnum))
@@ -365,7 +365,7 @@ if __name__=="__main__":
         elif menu_option == 5:
             #remove security
             if pwkey != '':
-                doit = raw_input('Remove file encryption and password protection (Y/N) ').upper()
+                doit = input('Remove file encryption and password protection (Y/N) ').upper()
                 if doit == 'Y':
                     pwkey=''
         
@@ -373,7 +373,7 @@ if __name__=="__main__":
             #enable/disable stock quotes
             c_getquotes = not c_getquotes
             if c_getquotes:
-                doit = (raw_input('Do you want to test Quote downloads? (Y/N)? ').upper() == 'Y')
+                doit = (input('Do you want to test Quote downloads? (Y/N)? ').upper() == 'Y')
                 if doit:
                     test_quotes()
                                     
@@ -391,11 +391,11 @@ if __name__=="__main__":
                 acctnum = acctnum-1
                 acct = AcctArray[acctnum][0] + ' | ' + AcctArray[acctnum][1]
                 #test the account
-                doit = raw_input('Test '+ acct+ ' (Y/N)? ').upper()
+                doit = input('Test '+ acct+ ' (Y/N)? ').upper()
                 if doit == 'Y':
                     test_acct(AcctArray[acctnum])
             elif acctnum == ticker_test:
-                doit = raw_input('Test Stock/Fund Pricing Updates (Y/N)? ').upper()
+                doit = input('Test Stock/Fund Pricing Updates (Y/N)? ').upper()
                 if doit == 'Y':
                     test_quotes()
         
@@ -408,7 +408,7 @@ if __name__=="__main__":
             print("\tSource :", AboutSource)
             print("\tVersion:", AboutVersion)
             print("\n\n"+"*"*70+"\n")
-            raw_input('Press Enter to continue')
+            input('Press Enter to continue')
         
     #end_while (main menu)
     

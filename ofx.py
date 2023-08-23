@@ -65,9 +65,9 @@
 #19Jun2023*rlc
 #   - add logging
 
-import time, os, sys, urllib2, glob, random, re
+import time, os, sys, urllib.parse, glob, random, re
 import requests, collections
-import getpass, scrubber, site_cfg, uuid
+import scrubber, site_cfg
 from control2 import *
 from rlib1 import *
 
@@ -101,9 +101,11 @@ class OFXClient:
         self.useragent  =  FieldVal(self.site,"useragent")
         
         #example: url='https://test.ofx.com/my/script'
-        prefix, path = urllib2.splittype(self.url)
+        prefix = urllib.parse.urlparse(self.url).scheme
+        path = urllib.parse.urlparse(self.url).path
         #path='//test.ofx.com/my/script';  Host= 'test.ofx.com' ; Selector= '/my/script'
-        self.urlHost, self.urlSelector = urllib2.splithost(path)
+        self.urlHost = urllib.parse.urlparse(self.url).netloc
+        self.urlSelector = path
         if Debug: 
             log.debug('urlHost    :' + self.urlHost)
             log.debug('urlSelector:' + self.urlSelector)
@@ -269,7 +271,7 @@ class OFXClient:
                 errmsg= "** An ERROR occurred sending POST request to"
                 response = s.post(self.url, data=query, verify=httpsVerify)
  
-                respDat = response.text.encode('ascii', 'ignore')
+                respDat = response.text
                 if Debug:
                     log.debug('*** SENT ***')
                     log.debug('HEADER: ' + str(response.request.headers))

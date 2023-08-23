@@ -95,14 +95,14 @@ if __name__=="__main__":
 
     doit='Y'
     if userdat.promptStart:
-        doit = raw_input("Download transactions? (Y/N/I=Interactive) [Y] ").upper()
+        doit = input("Download transactions? (Y/N/I=Interactive) [Y] ").upper()
         doit = 'Y' if doit=='' else doit[:1]  #first char
     if doit in "YI":
         #get download interval, if promptInterval=Yes in sites.dat
         interval = userdat.defaultInterval
         if userdat.promptInterval:
             try:
-                p = int2(raw_input("Download interval (days) [" + str(interval) + "]: "))
+                p = int2(input("Download interval (days) [" + str(interval) + "]: "))
                 if p>0: interval = p
             except:
                 log.info("Invalid entry. Using defaultInterval=" + str(interval))
@@ -211,7 +211,7 @@ if __name__=="__main__":
                 cfile=combineOfx(ofxList)       #create combined file
 
             if doit == 'I' or Debug:
-                gogo = raw_input('Upload results to Money? (Y/N/V=Verify) [Y] ').upper()
+                gogo = input('Upload results to Money? (Y/N/V=Verify) [Y] ').upper()
                 gogo = 'Y' if gogo=='' else gogo[:1]    #first letter
             
             if gogo == 'N': log.info('Results not sent to Money.  User cancelled.')
@@ -220,7 +220,7 @@ if __name__=="__main__":
                 if glob.glob(quoteFile2) != []: 
                     if Debug: log.debug("Importing ForceQuotes statement: %s" % quoteFile2)
                     runFile(quoteFile2)  #force transactions for MoneyUK
-                    raw_input('ForceQuote statement loaded.  Accept in Money and press <Enter> to continue.')
+                    input('ForceQuote statement loaded.  Accept in Money and press <Enter> to continue.')
 
                 log.info('Sending statement(s) to Money...')
                 if userdat.combineofx and cfile and gogo != 'V':
@@ -230,7 +230,7 @@ if __name__=="__main__":
                         upload = True
                         if gogo == 'V':
                             #file[0] = site, file[1] = accnt#, file[2] = ofxFile
-                            upload = (raw_input('Upload ' + file[0] + ' : ' + file[1] + ' (Y/N) ').upper() == 'Y')
+                            upload = (input('Upload ' + file[0] + ' : ' + file[1] + ' (Y/N) ').upper() == 'Y')
                             
                         if upload: 
                            log.info("Importing " + file[2])
@@ -240,21 +240,21 @@ if __name__=="__main__":
 
             #ask to show quotes.htm if defined in sites.dat
             if userdat.askquotehtm and quotesExist:
-                ask = raw_input('Open <Quotes.htm> in the default browser (y/n)?').upper()
+                ask = input('Open <Quotes.htm> in the default browser (y/n)?').upper()
                 if ask=='Y': os.startfile(htmFileName)  #don't wait for browser close
 
             if userdat.promptEnd:
-                raw_input('\n\nPress <Enter> to continue...')
+                input('\n\nPress <Enter> to continue...')
                     
         else:
             if len(AcctArray)>0 or (getquotes and len(userdat.stocks)>0):
                 log.warn("No files were downloaded. Verify network connection and try again later.")
-            raw_input("Press <Enter> to continue...")
+            input("Press <Enter> to continue...")
         
         if Debug:
-            raw_input("Press <Enter> to continue...")
+            input("Press <Enter> to continue...")
         elif not stat1:
             log.warn( "One or more accounts (or quotes) may not have downloaded correctly.")
-            raw_input("Review and press <Enter> to continue...")
+            input("Review and press <Enter> to continue...")
     
     log.info('-----------------------------------------------------------------------------------')

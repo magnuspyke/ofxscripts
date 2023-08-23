@@ -689,9 +689,9 @@ def getDESpw(prompt = 'Password'):
         pw = getpass.getpass(prompt+': ')
         pw = pw.rstrip()
         if len(pw) < 3:
-            print 'Invalid password.  Minimum length of 3-chars'
+            print ('Invalid password.  Minimum length of 3-chars')
         if ' ' in pw:
-            print 'Invalid password.  No spaces allowed'
+            print ('Invalid password.  No spaces allowed')
             
     #conform to an 8-byte field
     while len(pw) < 8:

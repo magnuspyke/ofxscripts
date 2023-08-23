@@ -74,14 +74,14 @@ def scrub(filename, site):
     dtHrs = FieldVal(site, 'timeOffset')
     accType = FieldVal(site, 'CAPS')[1]
     site_skip_zt = FieldVal(site, 'skipzerotrans')
-    with open(filename,'rU') as f:
+    with open(filename, newline='') as f:
         ofx = f.read()  #as-found ofx message
        
     ofx = _scrubHeader(ofx) #Remove illegal spaces in OFX header lines
     
     ofx= _scrubTime(ofx)     #fix 000000 and NULL datetime stamps 
 
-    if dtHrs <> 0: ofx = _scrubShiftTime(ofx, dtHrs)   #note: always call *after* _scrubTime()
+    if dtHrs != 0: ofx = _scrubShiftTime(ofx, dtHrs)   #note: always call *after* _scrubTime()
     
     ofx= _scrubDTSTART(ofx)  #fix missing <DTEND> fields
       

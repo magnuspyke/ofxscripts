@@ -21,7 +21,7 @@
 #   - add logging
 
 import os, glob, site_cfg, time, uuid, re, random
-import md5, urllib2
+import hashlib, urllib.parse
 import logging, logging.handlers
 import sys, pyDes, pickle
 from datetime import datetime
@@ -91,10 +91,11 @@ def clientUID(url, username, delKey=False):
     uuid = None
 
     #get urlHost:  example: url='https://test.ofx.com/my/script'
-    prefix, path = urllib2.splittype(url)
+    prefix = urllib.parse.urlparse(url)['scheme']
+    path = urllib.parse.urlparse(url)['path']
     #path='//test.ofx.com/my/script';  Host= 'test.ofx.com' ; Selector= '/my/script'
-    urlHost, urlSelector = urllib2.splithost(path)
-    key = md5.md5(urlHost+username).digest()
+    urlHost = urllib.parse.urlparse(url)['netloc']
+    key = hashlib.md5(urlHost+username).digest()
 
     if glob.glob(dfile) != []:
         #lookup
@@ -123,7 +124,7 @@ def get_int(prompt):
     prompt = prompt.rstrip() + ' '
     done = False
     while not done:
-        istr = raw_input(prompt)
+        istr = input(prompt)
         if istr == '':
             a = 0
             done = True
