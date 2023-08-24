@@ -27,8 +27,8 @@ Debug = False
 logFileEnable = True
 logFileLimit  = 10       #logfile size limit (MB)
 
-AboutTitle    = 'PocketSense OFX Download Python Scripts'
-AboutVersion  = '2023-Jul-20'
+AboutTitle    = 'PocketSense OFX Download Python 3 Scripts'
+AboutVersion  = '2023-Aug-24'
 AboutSource   = 'http://sites.google.com/site/pocketsense'
 AboutName     = 'Robert'
 

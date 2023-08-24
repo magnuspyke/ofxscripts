@@ -152,7 +152,8 @@ def decrypt_pw(pwkey):
         pw = pyDes.getDESpw()   #ask for password
         k = pyDes.des(pw)       #create encryption object using key
         pws = k.decrypt(pwkey,' ')  #decrypt
-        if pws != pw:               #comp to saved password
+        pws = pws.decode()          #for python 3 saved password is byte encoded
+        if pws != pw:      #comp to saved password
             print('Invalid password.  Exiting.')
             sys.exit()
         else:
@@ -173,9 +174,9 @@ def acctDecrypt(AcctArray, pwkey):
     #decrypt accounts
     d = pyDes.des(pwkey)
     for acct in AcctArray:
-       acct[1] = d.decrypt(acct[1],' ')
-       acct[3] = d.decrypt(acct[3],' ')
-       acct[4] = d.decrypt(acct[4],' ')
+       acct[1] = d.decrypt(acct[1],' ').decode()
+       acct[3] = d.decrypt(acct[3],' ').decode()
+       acct[4] = d.decrypt(acct[4],' ').decode()
     return AcctArray
     
 def get_cfg():

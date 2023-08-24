@@ -29,10 +29,18 @@
 #19Jun2023*rlc
 #   - add logging
 
+import sys
+from control2 import *  #global settings
+
+_pythonMajorVersion = sys.version_info[0]
+if _pythonMajorVersion < 3:
+    print('')
+    print(AboutTitle + ", Ver: " + AboutVersion + " does not support python 2")
+    exit()
+
 import os, glob, re, pickle, shutil, time
 import pyDes, ofx, quotes, site_cfg, filecmp
 import rlib1
-from control2 import *  #global settings
 
 #startup
 print('')
@@ -122,7 +130,7 @@ def config_account():
             log.debug(response)
        
         if not stat or not '<ACCTID>' in response:
-            log.warn('An error occurred requesting accounts from the site.  Please check username and password.')
+            log.warning('An error occurred requesting accounts from the site.  Please check username and password.')
             ans = input('Continue configuring account (Yes/No): [N] ') or 'N'
             stat = True if ans[0].upper() == 'Y' else False
 

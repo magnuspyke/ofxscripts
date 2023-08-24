@@ -44,9 +44,17 @@
 #19Jun2023*rlc
 #   - add logging
 
-import os, sys, glob, time, re
+import sys
+from control2 import *  #global settings
+
+_pythonMajorVersion = sys.version_info[0]
+if _pythonMajorVersion < 3:
+    print('')
+    print(AboutTitle + ", Ver: " + AboutVersion + " does not support python 2")
+    exit()
+
+import os, glob, time, re
 import ofx, quotes, site_cfg, scrubber
-from control2 import *
 from rlib1 import *
 
 #startup
