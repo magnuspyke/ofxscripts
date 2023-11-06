@@ -433,7 +433,7 @@ def getQuotes():
         if not os.path.exists(xfrdir):
             os.mkdir(xfrdir)
         
-        ofxFile1 = xfrdir + "quotes" + dateTimeStr() + str(random.randrange(1e5,1e6)) + ".ofx"
+        ofxFile1 = xfrdir + "quotes" + dateTimeStr() + str(random.randrange(100000,1000000)) + ".ofx"
         writer = OfxWriter(currency, account, 0, stockList, mfList)
         writer.writeFile(ofxFile1)
 
